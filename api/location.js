@@ -14,51 +14,38 @@ export default async function handler(req, res) {
       }
     }).then(r => r.text());
 
-    // Pattern 1: setView([lat, lng]) — Leaflet map init
-    const setViewMatch = html.match(/setView\s*\(\s*\[?\s*([\d.-]{6,})\s*,\s*([\d.-]{6,})/);
-    if (setViewMatch) {
-      const lat = setViewMatch[1], lng = setViewMatch[2];
-      return res.redirect(`https://www.google.com/maps?q=${lat},${lng}&z=17`);
+    // Extract ALL script content
+    const scripts = [...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/gi)].map(m => m[1]).join('\n');
+
+    // Find AJAX/fetch/XHR calls
+    const ajaxMatches = [...scripts.matchAll(/\$\.(ajax|get|post)\s*\(\s*[\{'"]/g)];
+    const fetchMatches = [...scripts.matchAll(/fetch\s*\(/g)];
+    const xhrMatches = [...scripts.matchAll(/XMLHttpRequest/g)];
+    const setIntervalMatches = [...scripts.matchAll(/setInterval/g)];
+
+    // Get the section around any ajax/fetch call
+    let apiSection = '';
+    const ajaxIdx = scripts.indexOf('$.ajax') !== -1 ? scripts.indexOf('$.ajax') :
+                    scripts.indexOf('$.post') !== -1 ? scripts.indexOf('$.post') :
+                    scripts.indexOf('$.get') !== -1 ? scripts.indexOf('$.get') :
+                    scripts.indexOf('fetch(') !== -1 ? scripts.indexOf('fetch(') :
+                    scripts.indexOf('setInterval') !== -1 ? scripts.indexOf('setInterval') : -1;
+
+    if (ajaxIdx !== -1) {
+      apiSection = scripts.substring(Math.max(0, ajaxIdx - 100), ajaxIdx + 1000);
     }
 
-    // Pattern 2: center: [lat, lng]
-    const centerMatch = html.match(/center\s*[=:]\s*\[?\s*([\d.-]{6,})\s*,\s*([\d.-]{6,})/);
-    if (centerMatch) {
-      return res.redirect(`https://www.google.com/maps?q=${centerMatch[1]},${centerMatch[2]}&z=17`);
-    }
-
-    // Pattern 3: var lat = ..., var lng = ...
-    const varLatMatch = html.match(/var\s+(?:lat|latitude|gpsLat)\s*=\s*([\d.-]{4,})/i);
-    const varLngMatch = html.match(/var\s+(?:lng|lon|longitude|gpsLng)\s*=\s*([\d.-]{4,})/i);
-    if (varLatMatch && varLngMatch) {
-      return res.redirect(`https://www.google.com/maps?q=${varLatMatch[1]},${varLngMatch[1]}&z=17`);
-    }
-
-    // Pattern 4: L.marker([lat, lng])
-    const markerMatch = html.match(/L\.marker\s*\(\s*\[?\s*([\d.-]{6,})\s*,\s*([\d.-]{6,})/);
-    if (markerMatch) {
-      return res.redirect(`https://www.google.com/maps?q=${markerMatch[1]},${markerMatch[2]}&z=17`);
-    }
-
-    // Pattern 5: any 2 consecutive decimal numbers > 5 digits (GPS coords)
-    const allCoords = [...html.matchAll(/([\d]{1,3}\.[\d]{5,})/g)].map(m => parseFloat(m[1]));
-    const lats = allCoords.filter(n => n > 10 && n < 70);
-    const lngs = allCoords.filter(n => n > 30 && n < 180);
-    if (lats.length && lngs.length) {
-      return res.redirect(`https://www.google.com/maps?q=${lats[0]},${lngs[0]}&z=17`);
-    }
-
-    // Debug: return the part of HTML that contains map-related code
-    const mapIdx = html.indexOf('setView') !== -1 ? html.indexOf('setView') :
-                   html.indexOf('center') !== -1 ? html.indexOf('center') :
-                   html.indexOf('marker') !== -1 ? html.indexOf('marker') : 0;
-
+    // Return full scripts for analysis
     return res.status(200).json({
-      msg: 'coords_not_found',
-      map_section: html.substring(Math.max(0, mapIdx - 200), mapIdx + 500),
-      full_html_length: html.length,
-      // Look for numbers that could be coords
-      decimal_numbers: allCoords.filter(n => n > 1 && n < 200).slice(0, 20)
+      has_ajax: ajaxMatches.length,
+      has_fetch: fetchMatches.length,
+      has_xhr: xhrMatches.length,
+      has_setInterval: setIntervalMatches.length,
+      api_section: apiSection,
+      // Full scripts in chunks
+      scripts_part1: scripts.substring(0, 3000),
+      scripts_part2: scripts.substring(3000, 6000),
+      scripts_part3: scripts.substring(6000, 9000),
     });
 
   } catch(err) {

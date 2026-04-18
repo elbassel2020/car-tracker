@@ -1,6 +1,6 @@
 export default async function handler(req, res) {
 
-  const DEVICE_INFO = '7ae7c62385f2067ff94c6361aa1c47ce5c3acfc0bcfb4f521dc8f2183ca08dbb97fa76ba5c81e8194800bc78e639c80fa0b4686649e252f4d08e0460c5edd13ae3e69384bc675234';
+  const DEVICE_INFO = '7ae7c62385f2067ff94c6361aa1c47ce5c3acfc0bcfb4f521dc8f2183ca08dbb97fa76ba5c81e819020d99e5283a98b610e9a860db92b2a2d08e0460c5edd13ac265b625ca321bab';
   const IMEI = '864993060962348';
   const BASE = 'https://eu.tracksolidpro.com';
   const SHARE_URL = `${BASE}/api/share?ver=2&method=trackDevice_abr&deviceinfo=${DEVICE_INFO}&deviceName=JC261P-62348&deviceIMEI=${IMEI}`;
@@ -14,41 +14,33 @@ export default async function handler(req, res) {
       }
     }).then(r => r.text());
 
-    // Extract ALL script content
-    const scripts = [...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/gi)].map(m => m[1]).join('\n');
+    // Pattern 1: setView([lat, lng])
+    const setViewMatch = html.match(/setView\s*\(\s*\[?\s*([\d.-]{6,})\s*,\s*([\d.-]{6,})/);
+    if (setViewMatch) return res.redirect(`https://www.google.com/maps?q=${setViewMatch[1]},${setViewMatch[2]}&z=17`);
 
-    // Find AJAX/fetch/XHR calls
-    const ajaxMatches = [...scripts.matchAll(/\$\.(ajax|get|post)\s*\(\s*[\{'"]/g)];
-    const fetchMatches = [...scripts.matchAll(/fetch\s*\(/g)];
-    const xhrMatches = [...scripts.matchAll(/XMLHttpRequest/g)];
-    const setIntervalMatches = [...scripts.matchAll(/setInterval/g)];
+    // Pattern 2: center: [lat, lng]
+    const centerMatch = html.match(/center\s*[=:]\s*\[?\s*([\d.-]{6,})\s*,\s*([\d.-]{6,})/);
+    if (centerMatch) return res.redirect(`https://www.google.com/maps?q=${centerMatch[1]},${centerMatch[2]}&z=17`);
 
-    // Get the section around any ajax/fetch call
-    let apiSection = '';
-    const ajaxIdx = scripts.indexOf('$.ajax') !== -1 ? scripts.indexOf('$.ajax') :
-                    scripts.indexOf('$.post') !== -1 ? scripts.indexOf('$.post') :
-                    scripts.indexOf('$.get') !== -1 ? scripts.indexOf('$.get') :
-                    scripts.indexOf('fetch(') !== -1 ? scripts.indexOf('fetch(') :
-                    scripts.indexOf('setInterval') !== -1 ? scripts.indexOf('setInterval') : -1;
+    // Pattern 3: var lat = X, var lng = X
+    const varLat = html.match(/var\s+lat\s*=\s*([\d.-]{4,})/i);
+    const varLng = html.match(/var\s+lng\s*=\s*([\d.-]{4,})/i);
+    if (varLat && varLng) return res.redirect(`https://www.google.com/maps?q=${varLat[1]},${varLng[1]}&z=17`);
 
-    if (ajaxIdx !== -1) {
-      apiSection = scripts.substring(Math.max(0, ajaxIdx - 100), ajaxIdx + 1000);
-    }
+    // Pattern 4: L.marker([lat, lng])
+    const markerMatch = html.match(/L\.marker\s*\(\s*\[?\s*([\d.-]{6,})\s*,\s*([\d.-]{6,})/);
+    if (markerMatch) return res.redirect(`https://www.google.com/maps?q=${markerMatch[1]},${markerMatch[2]}&z=17`);
 
-    // Return full scripts for analysis
-    return res.status(200).json({
-      has_ajax: ajaxMatches.length,
-      has_fetch: fetchMatches.length,
-      has_xhr: xhrMatches.length,
-      has_setInterval: setIntervalMatches.length,
-      api_section: apiSection,
-      // Full scripts in chunks
-      scripts_part1: scripts.substring(0, 3000),
-      scripts_part2: scripts.substring(3000, 6000),
-      scripts_part3: scripts.substring(6000, 9000),
-    });
+    // Pattern 5: any GPS-like coordinates in the HTML
+    const coords = [...html.matchAll(/([\d]{1,3}\.[\d]{5,})/g)].map(m => parseFloat(m[1]));
+    const lats = coords.filter(n => n > 10 && n < 70);
+    const lngs = coords.filter(n => n > 30 && n < 180);
+    if (lats.length && lngs.length) return res.redirect(`https://www.google.com/maps?q=${lats[0]},${lngs[0]}&z=17`);
+
+    // No coords found — redirect to TrackSolid page directly
+    return res.redirect(SHARE_URL);
 
   } catch(err) {
-    return res.status(200).json({ error: err.message });
+    return res.redirect(`https://eu.tracksolidpro.com/api/share?ver=2&method=trackDevice_abr&deviceinfo=${DEVICE_INFO}&deviceName=JC261P-62348&deviceIMEI=${IMEI}`);
   }
 }

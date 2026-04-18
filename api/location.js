@@ -3,37 +3,42 @@ export default async function handler(req, res) {
 
   try {
     const response = await fetch(URL, {
-      headers: { 'User-Agent': 'Mozilla/5.0' }
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15',
+        'Accept': 'application/json, text/html, */*',
+        'Referer': 'https://eu.tracksolidpro.com/'
+      }
     });
-    const data = await response.json();
 
-    // Extract coordinates from various possible formats
-    let lat, lng, speed = 0;
+    const text = await response.text();
 
-    if (data.obj) {
-      lat = data.obj.lat || data.obj.latitude;
-      lng = data.obj.lng || data.obj.lon || data.obj.longitude;
-      speed = data.obj.speed || 0;
-    } else if (data.data) {
-      lat = data.data.lat || data.data.latitude;
-      lng = data.data.lng || data.data.lon;
-      speed = data.data.speed || 0;
-    } else {
-      // Deep search
+    let lat, lng;
+
+    // Try JSON first
+    try {
+      const data = JSON.parse(text);
       const str = JSON.stringify(data);
-      const latM = str.match(/"lat[itude]*"\s*:\s*([\d.-]+)/i);
-      const lngM = str.match(/"l(?:ng|on|ongitude)"\s*:\s*([\d.-]+)/i);
+      const latM = str.match(/"lat[itude]*"\s*:\s*"?([\d.-]+)"?/i);
+      const lngM = str.match(/"l(?:ng|on|ongitude)"\s*:\s*"?([\d.-]+)"?/i);
+      if (latM && lngM) { lat = latM[1]; lng = lngM[1]; }
+    } catch(e) {
+      // Not JSON — try extract from HTML
+      const latM = text.match(/lat[itude]*['":\s]+([\d]{1,3}\.\d{4,})/i);
+      const lngM = text.match(/l(?:ng|on|ongitude)['":\s]+([\d]{1,3}\.\d{4,})/i);
       if (latM && lngM) { lat = latM[1]; lng = lngM[1]; }
     }
 
     if (!lat || !lng) {
-      return res.redirect('/?error=no_gps');
+      // Log raw response for debugging
+      return res.status(200).json({ 
+        error: 'no_coords', 
+        raw: text.substring(0, 500) 
+      });
     }
 
-    // Redirect straight to Google Maps
     return res.redirect(`https://www.google.com/maps?q=${lat},${lng}&z=17`);
 
   } catch (err) {
-    return res.redirect('/?error=fetch_failed');
+    return res.status(200).json({ error: err.message });
   }
 }

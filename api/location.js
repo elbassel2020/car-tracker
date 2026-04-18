@@ -14,44 +14,51 @@ export default async function handler(req, res) {
       }
     }).then(r => r.text());
 
-    // Extract all inline script content
-    const scripts = [...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/gi)].map(m => m[1]).join('\n');
-
-    // Find API calls in scripts
-    const apiMatches = [...scripts.matchAll(/["'`](\/api\/[^"'`\s]{3,})["'`]/g)].map(m => m[1]);
-    const ajaxUrls = [...scripts.matchAll(/(?:url|href|src|path|endpoint)\s*[:=]\s*["'`]([^"'`\s]{5,})["'`]/gi)].map(m => m[1]).filter(u => u.includes('/') && !u.includes('.css') && !u.includes('.js') && !u.includes('.png'));
-    const fetchUrls = [...scripts.matchAll(/fetch\s*\(["'`]([^"'`]+)["'`]/g)].map(m => m[1]);
-    const postUrls = [...scripts.matchAll(/(?:post|POST)\s*\(["'`]([^"'`]+)["'`]/g)].map(m => m[1]);
-
-    const allEndpoints = [...new Set([...apiMatches, ...ajaxUrls, ...fetchUrls, ...postUrls])];
-
-    // Try POST requests (TrackSolid often uses POST)
-    for (const endpoint of allEndpoints) {
-      const url = endpoint.startsWith('http') ? endpoint : `${BASE}${endpoint}`;
-      try {
-        const r = await fetch(url, {
-          method: 'POST',
-          headers: {
-            'User-Agent': 'Mozilla/5.0',
-            'Accept': 'application/json',
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'Referer': SHARE_URL
-          },
-          body: `deviceinfo=${encodeURIComponent(DEVICE_INFO)}&imei=${IMEI}&ver=2&method=trackDevice_abr`
-        });
-        const text = await r.text();
-        const latM = text.match(/"?lat[itude]*"?\s*:\s*"?([\d]{1,3}\.[\d]{4,})"?/i);
-        const lngM = text.match(/"?l(?:ng|on|ongitude)"?\s*:\s*"?([\d]{1,3}\.[\d]{4,})"?/i);
-        if (latM && lngM) {
-          return res.redirect(`https://www.google.com/maps?q=${latM[1]},${lngM[1]}&z=17`);
-        }
-      } catch(e) { continue; }
+    // Pattern 1: setView([lat, lng]) — Leaflet map init
+    const setViewMatch = html.match(/setView\s*\(\s*\[?\s*([\d.-]{6,})\s*,\s*([\d.-]{6,})/);
+    if (setViewMatch) {
+      const lat = setViewMatch[1], lng = setViewMatch[2];
+      return res.redirect(`https://www.google.com/maps?q=${lat},${lng}&z=17`);
     }
 
-    // Return full inline script for analysis
+    // Pattern 2: center: [lat, lng]
+    const centerMatch = html.match(/center\s*[=:]\s*\[?\s*([\d.-]{6,})\s*,\s*([\d.-]{6,})/);
+    if (centerMatch) {
+      return res.redirect(`https://www.google.com/maps?q=${centerMatch[1]},${centerMatch[2]}&z=17`);
+    }
+
+    // Pattern 3: var lat = ..., var lng = ...
+    const varLatMatch = html.match(/var\s+(?:lat|latitude|gpsLat)\s*=\s*([\d.-]{4,})/i);
+    const varLngMatch = html.match(/var\s+(?:lng|lon|longitude|gpsLng)\s*=\s*([\d.-]{4,})/i);
+    if (varLatMatch && varLngMatch) {
+      return res.redirect(`https://www.google.com/maps?q=${varLatMatch[1]},${varLngMatch[1]}&z=17`);
+    }
+
+    // Pattern 4: L.marker([lat, lng])
+    const markerMatch = html.match(/L\.marker\s*\(\s*\[?\s*([\d.-]{6,})\s*,\s*([\d.-]{6,})/);
+    if (markerMatch) {
+      return res.redirect(`https://www.google.com/maps?q=${markerMatch[1]},${markerMatch[2]}&z=17`);
+    }
+
+    // Pattern 5: any 2 consecutive decimal numbers > 5 digits (GPS coords)
+    const allCoords = [...html.matchAll(/([\d]{1,3}\.[\d]{5,})/g)].map(m => parseFloat(m[1]));
+    const lats = allCoords.filter(n => n > 10 && n < 70);
+    const lngs = allCoords.filter(n => n > 30 && n < 180);
+    if (lats.length && lngs.length) {
+      return res.redirect(`https://www.google.com/maps?q=${lats[0]},${lngs[0]}&z=17`);
+    }
+
+    // Debug: return the part of HTML that contains map-related code
+    const mapIdx = html.indexOf('setView') !== -1 ? html.indexOf('setView') :
+                   html.indexOf('center') !== -1 ? html.indexOf('center') :
+                   html.indexOf('marker') !== -1 ? html.indexOf('marker') : 0;
+
     return res.status(200).json({
-      endpoints_found: allEndpoints,
-      inline_scripts: scripts.substring(0, 3000)
+      msg: 'coords_not_found',
+      map_section: html.substring(Math.max(0, mapIdx - 200), mapIdx + 500),
+      full_html_length: html.length,
+      // Look for numbers that could be coords
+      decimal_numbers: allCoords.filter(n => n > 1 && n < 200).slice(0, 20)
     });
 
   } catch(err) {

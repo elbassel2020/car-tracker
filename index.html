@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>موقع السيارة</title>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Cairo', sans-serif;
+    background: #0A0A0F;
+    color: #E8E8F0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+  .card {
+    background: #12121A;
+    border: 1px solid rgba(201,168,76,0.2);
+    border-radius: 24px;
+    padding: 48px 32px;
+    text-align: center;
+    max-width: 360px;
+    width: 100%;
+  }
+  .icon { font-size: 64px; margin-bottom: 20px; animation: float 2s ease-in-out infinite; }
+  @keyframes float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-8px)} }
+  h1 { font-size: 26px; font-weight: 900; color: #C9A84C; margin-bottom: 8px; }
+  p { font-size: 14px; color: #6B6B80; margin-bottom: 32px; }
+  .btn {
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    width: 100%; padding: 16px; border-radius: 14px;
+    font-family: 'Cairo', sans-serif; font-size: 16px; font-weight: 700;
+    cursor: pointer; border: none; text-decoration: none;
+    background: linear-gradient(135deg, #F0D080, #C9A84C);
+    color: #0A0A0F;
+    box-shadow: 0 8px 24px rgba(201,168,76,0.3);
+    transition: all 0.2s;
+    margin-bottom: 12px;
+  }
+  .btn:hover { transform: translateY(-2px); box-shadow: 0 12px 32px rgba(201,168,76,0.45); }
+  .btn-share {
+    background: transparent;
+    border: 1px solid rgba(201,168,76,0.3);
+    color: #C9A84C;
+    box-shadow: none;
+  }
+  .error { color: #FF6B6B; font-size: 13px; margin-top: 16px; display: none; }
+  .error.show { display: block; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="icon">🚗</div>
+  <h1>موقع السيارة</h1>
+  <p>اضغط الزرار لفتح الموقع الحالي على Google Maps مباشرة</p>
+
+  <a class="btn" href="/location">
+    📍 افتح على Google Maps
+  </a>
+
+  <button class="btn btn-share" onclick="shareLink()">
+    📤 شارك الموقع
+  </button>
+
+  <div class="error" id="errMsg"></div>
+</div>
+
+<script>
+  // Show error if redirected back with error param
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('error')) {
+    const el = document.getElementById('errMsg');
+    el.textContent = 'تعذّر تحديد الموقع — تأكد أن الجهاز شغال وعنده GPS';
+    el.classList.add('show');
+  }
+
+  async function shareLink() {
+    const url = window.location.origin + '/location';
+    if (navigator.share) {
+      await navigator.share({ title: 'موقع السيارة', url });
+    } else {
+      await navigator.clipboard.writeText(url);
+      alert('تم نسخ الرابط! 📋');
+    }
+  }
+</script>
+</body>
+</html>

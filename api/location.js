@@ -1,5 +1,5 @@
 export default async function handler(req, res) {
-  const URL = 'https://eu.tracksolidpro.com/api/share?ver=2&method=trackDevice_abr&deviceinfo=7ae7c62385f2067ff94c6361aa1c47ce5c3acfc0bcfb4f521dc8f2183ca08dbb97fa76ba5c81e8194800bc78e639c80fa0b4686649e252f4d08e0460c5edd13ae3e69384bc675234&deviceName=JC261P-62348&deviceIMEI=864993060962348';
+  const URL = 'https://eu.tracksolidpro.com//api/share?ver=2&method=trackDevice_abr&deviceinfo=7ae7c62385f2067ff94c6361aa1c47ce5c3acfc0bcfb4f521dc8f2183ca08dbb97fa76ba5c81e8197815b07c2d7350c4e438949af3a1cc98d08e0460c5edd13ae3e69384bc675234&deviceName=JC261P-62348&deviceIMEI=864993060962348';
 
   try {
     const response = await fetch(URL, {
